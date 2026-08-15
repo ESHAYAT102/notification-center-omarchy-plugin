@@ -15,10 +15,23 @@ omarchy plugin add https://github.com/ESHAYAT102/notification-center-omarchy-plu
 - **Left-click** the bell to open or close the notification panel.
 - **Right-click** the bell to toggle Do Not Disturb.
 - **Escape** closes the panel.
-- Optional keybinding for the panel:
+
+## Keybindings
+
+The panel and its clear action are exposed over the shell IPC, so they can be
+bound to any compositor key with `omarchy-shell`:
+
+- **Toggle the panel**:
 
 ```sh
 omarchy shell i 'hl.dsp.add("SUPER + A", "Notification Center", "omarchy-shell esh.notification-center toggle")'
+```
+
+- **Clear all notifications** (empties the panel list, dismisses on-screen
+  toasts, and wipes recorded history — works whether or not the panel is open):
+
+```sh
+omarchy shell i 'hl.dsp.add("SUPER + comma", "Clear notifications", "omarchy-shell esh.notification-center clear")'
 ```
 
 ## Configure
