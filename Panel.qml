@@ -15,105 +15,68 @@ Panel {
   property var host: null
 
   readonly property var service: bar && bar.shell ? bar.shell.firstPartyServiceFor("omarchy.notifications") : null
-  readonly property string stateDir: service && service.popupStateDir
-    ? service.popupStateDir
-    : (Quickshell.env("HOME") + "/.local/state/omarchy/notifications/")
-  readonly property string historyDir: stateDir + "history/"
-  readonly property string imagesDir: stateDir + "images/"
   readonly property color foreground: Color.popups.text
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
 
-  property var historyEntries: []
-  property bool historyLoaded: false
-  property bool historyReadPending: false
-  property real seenThreshold: 0
-
+  // The panel renders a filtered copy of the notifications service's
+  // popupModel. Persisted history is replayed into that model through the
+  // service itself (the stock `showHistory` IPC route), so this plugin never
+  // reads the service's on-disk storage directly.
   property ListModel displayModel: ListModel { id: displayModel }
+  property real seenThreshold: 0
+  property int lastModelCount: -1
 
-  readonly property int liveCount: service && service.popupModel ? service.popupModel.count : 0
+  readonly property int modelCount: service && service.popupModel ? service.popupModel.count : 0
   readonly property bool unseen: {
-    if (root.liveCount > 0) return true
-    for (var i = 0; i < historyEntries.length; i++) {
-      if (historyEntries[i].timestamp > root.seenThreshold) return true
+    if (!root.service || !root.service.popupModel) return false
+    for (var i = 0; i < root.service.popupModel.count; i++) {
+      var row = root.service.popupModel.get(i)
+      if (row && row.originalId >= 0 && Number(row.timestamp || 0) > root.seenThreshold) return true
     }
     return false
   }
 
   function open() {
     root.controller.show()
-    if (!historyLoaded) readHistory()
-    else root.refreshModel()
-    root.markSeen()
   }
 
   function close() {
     root.controller.hide()
   }
 
-  function markSeen() {
-    var newest = 0
-    for (var i = 0; i < historyEntries.length; i++) {
-      var t = Number(historyEntries[i].timestamp || 0)
-      if (t > newest) newest = t
-    }
-    root.seenThreshold = newest
-  }
-
   function toggle() {
     root.opened ? root.close() : root.open()
   }
 
-  function readHistory() {
-    if (historyProc.running) {
-      historyReadPending = true
-      return
-    }
-    historyProc.command = ["bash", "-c", "awk 1 \"$1\"/*.json 2>/dev/null || true", "--", root.historyDir]
-    historyProc.running = true
+  function markSeen() {
+    root.seenThreshold = Date.now()
   }
 
-  function parseHistory(raw) {
-    var lines = String(raw || "").split("\n")
-    var entries = []
-    for (var i = 0; i < lines.length; i++) {
-      var line = lines[i].trim()
-      if (!line) continue
-      try {
-        var v = JSON.parse(line)
-        if (v && typeof v === "object") entries.push(v)
-      } catch (e) {
-      }
+  // Ask the notifications service to replay its persisted history into
+  // popupModel. Falls back to the public IPC when the service does not
+  // expose the direct method.
+  function refreshFromService() {
+    if (root.service && typeof root.service.showRecentHistory === "function") {
+      root.service.showRecentHistory()
+      return
     }
-    entries.sort(function(a, b) { return (b.timestamp || 0) - (a.timestamp || 0) })
-    historyEntries = entries
-    historyLoaded = true
-    root.refreshModel()
-    if (root.opened) root.markSeen()
+    historyIpcProc.command = ["omarchy-shell", "notifications", "showHistory"]
+    historyIpcProc.running = true
   }
 
   function refreshModel() {
     displayModel.clear()
     var pm = root.service && root.service.popupModel ? root.service.popupModel : null
-    if (pm) {
-      for (var i = 0; i < pm.count; i++) {
-        var row = pm.get(i)
-        displayModel.append({
-          kind: "live", srcIndex: i,
-          app: row.app || "", appIcon: row.appIcon || "", summary: row.summary || "",
-          body: row.body || "", image: row.image || "", glyph: row.glyph || "",
-          exec: row.exec || "", urgency: row.urgency || 0,
-          originalId: row.originalId || 0, timestamp: row.timestamp || 0
-        })
-      }
-    }
-    for (var j = 0; j < historyEntries.length; j++) {
-      var h = historyEntries[j]
+    if (!pm) return
+    for (var i = 0; i < pm.count; i++) {
+      var row = pm.get(i)
+      // Skip the service's "no recent notifications" placeholder row.
+      if (!row || row.originalId < 0) continue
       displayModel.append({
-        kind: "history", srcIndex: -1,
-        app: h.app || "", appIcon: h.appIcon || "", summary: h.summary || "",
-        body: h.body || "", image: h.image || "", glyph: h.glyph || "",
-        exec: h.exec || "", urgency: h.urgency || 0,
-        originalId: h.originalId || h.id || 0, timestamp: h.timestamp || 0
+        app: row.app || "", appIcon: row.appIcon || "", summary: row.summary || "",
+        body: row.body || "", image: row.image || "", glyph: row.glyph || "",
+        exec: row.exec || "", urgency: row.urgency || 0,
+        originalId: row.originalId || 0, timestamp: row.timestamp || 0
       })
     }
   }
@@ -123,62 +86,38 @@ Panel {
     if (!pm) return -1
     for (var i = 0; i < pm.count; i++) {
       var row = pm.get(i)
-      if (row.originalId === originalId && row.timestamp === timestamp) return i
+      if (row && row.originalId === originalId && row.timestamp === timestamp) return i
     }
     return -1
   }
 
   function actOnRow(index) {
     var entry = displayModel.get(index)
-    if (!entry) return
-    if (entry.kind === "live") {
-      var li = root.liveIndexFor(entry.originalId, entry.timestamp)
-      if (li >= 0 && root.service) root.service.invokePopupDefault(li)
-      return
-    }
-    if (entry.exec) Util.execDetached(entry.exec)
-    else if (root.service && typeof root.service.focusApp === "function" && entry.app)
-      root.service.focusApp({ app: entry.app })
-    root.removeHistoryEntry(index)
+    if (!entry || !root.service) return
+    var li = root.liveIndexFor(entry.originalId, entry.timestamp)
+    if (li >= 0 && typeof root.service.invokePopupDefault === "function")
+      root.service.invokePopupDefault(li)
   }
 
   function dismissRow(index) {
     var entry = displayModel.get(index)
-    if (!entry) return
-    if (entry.kind === "live") {
-      var li = root.liveIndexFor(entry.originalId, entry.timestamp)
-      if (li >= 0 && root.service) root.service.dismissPopup(li)
-      return
-    }
-    root.removeHistoryEntry(index)
+    if (!entry || !root.service) return
+    var li = root.liveIndexFor(entry.originalId, entry.timestamp)
+    if (li >= 0 && typeof root.service.dismissPopup === "function")
+      root.service.dismissPopup(li)
   }
 
-  function removeHistoryEntry(index) {
-    var entry = displayModel.get(index)
-    if (!entry) return
-    var stem = String(entry.timestamp || 0) + "-" + String(entry.originalId || 0)
-    var script = "stem=" + Util.shellQuote(stem) + "\n"
-      + "hist=" + Util.shellQuote(root.historyDir) + "\n"
-      + "imgs=" + Util.shellQuote(root.imagesDir) + "\n"
-      + "rm -f -- \"$hist/$stem.json\" \"$imgs/$stem\"-*\n"
-    Util.execDetached(script)
-    var out = []
-    for (var i = 0; i < historyEntries.length; i++) {
-      var h = historyEntries[i]
-      if (String(h.timestamp || 0) + "-" + String(h.originalId || 0) !== stem) out.push(h)
-    }
-    historyEntries = out
-    root.refreshModel()
-  }
-
+  // Dismiss the on-screen toasts (the service archives them to history), then
+  // wipe the recorded history through the public notifications IPC.
   function clearAll() {
-    if (root.service) {
+    if (root.service && typeof root.service.clearPopups === "function")
       root.service.clearPopups()
-      root.service.clearHistory()
-    }
-    historyEntries = []
-    historyLoaded = true
-    root.readHistory()
+    var shellPath = Quickshell.env("OMARCHY_PATH")
+    clearIpcProc.command = [
+      shellPath ? shellPath + "/bin/omarchy-shell" : "omarchy-shell",
+      "notifications", "clear"
+    ]
+    clearIpcProc.running = true
   }
 
   function relativeTime(ts) {
@@ -217,8 +156,10 @@ Panel {
 
   onOpenedChanged: {
     if (root.opened) {
-      if (!historyLoaded || historyReadPending) readHistory()
-      else refreshTimer.restart()
+      root.lastModelCount = root.modelCount
+      root.refreshFromService()
+      root.refreshModel()
+      root.markSeen()
     }
   }
 
@@ -232,48 +173,28 @@ Panel {
   }
 
   Timer {
-    id: refreshTimer
-    interval: 150
-    repeat: false
-    onTriggered: root.refreshModel()
-  }
-
-  Timer {
-    id: periodicTimer
-    interval: 30000
-    running: root.opened
-    repeat: true
-    onTriggered: root.readHistory()
-  }
-
-  property int lastLiveCount: -1
-
-  Timer {
     id: livePoll
     interval: 1000
     running: root.opened
     repeat: true
     onTriggered: {
-      var n = root.service && root.service.popupModel ? root.service.popupModel.count : 0
-      if (n !== root.lastLiveCount) {
-        root.lastLiveCount = n
-        root.readHistory()
+      var n = root.modelCount
+      if (n !== root.lastModelCount) {
+        root.lastModelCount = n
+        root.refreshModel()
       }
     }
   }
 
   Process {
-    id: historyProc
-    stdout: StdioCollector {
-      waitForEnd: true
-      onStreamFinished: root.parseHistory(text)
-    }
-    onExited: function() {
-      if (root.historyReadPending) {
-        root.historyReadPending = false
-        root.readHistory()
-      }
-    }
+    id: historyIpcProc
+    running: false
+  }
+
+  Process {
+    id: clearIpcProc
+    running: false
+    onExited: root.refreshModel()
   }
 
   KeyboardPanel {
@@ -291,7 +212,10 @@ Panel {
       anchors.fill: parent
       onCloseRequested: root.close()
       onTextKey: function(t) {
-        if (t === "r" || t === "R") root.readHistory()
+        if (t === "r" || t === "R") {
+          root.refreshFromService()
+          root.refreshModel()
+        }
       }
 
       ScrollView {
