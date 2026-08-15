@@ -240,6 +240,7 @@ Panel {
     function show() { root.open() }
     function hide() { root.close() }
     function toggle() { root.toggle() }
+    function clear() { root.clearAll() }
   }
 
   Timer {
