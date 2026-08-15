@@ -21,12 +21,21 @@ Panel {
   // The panel renders a filtered copy of the notifications service's
   // popupModel. Persisted history is replayed into that model through the
   // service itself (the stock `showHistory` IPC route), so this plugin never
-  // reads the service's on-disk storage directly.
+  // reads the service's on-disk storage directly. Rows the service replays
+  // (and its empty-history placeholder) are copied here and immediately
+  // dismissed from popupModel, so history is only ever shown inside the
+  // panel and never flashes past as an OSD toast.
   property ListModel displayModel: ListModel { id: displayModel }
   property real seenThreshold: 0
-  property int lastModelCount: -1
+  property var dismissedKeys: ({})
+  // True from the first panel open until the next shell restart. It is what
+  // separates rows replayed on our request from toasts restored at startup,
+  // which must keep their place on screen until the panel is actually open.
+  property bool replayPending: false
 
   readonly property int modelCount: service && service.popupModel ? service.popupModel.count : 0
+
+  onModelCountChanged: root.syncFromModel()
   readonly property bool unseen: {
     if (!root.service || !root.service.popupModel) return false
     for (var i = 0; i < root.service.popupModel.count; i++) {
@@ -54,8 +63,10 @@ Panel {
 
   // Ask the notifications service to replay its persisted history into
   // popupModel. Falls back to the public IPC when the service does not
-  // expose the direct method.
+  // expose the direct method. syncFromModel absorbs the replayed rows the
+  // moment they land, so they never flash past as OSD toasts.
   function refreshFromService() {
+    root.replayPending = true
     if (root.service && typeof root.service.showRecentHistory === "function") {
       root.service.showRecentHistory()
       return
@@ -64,20 +75,56 @@ Panel {
     historyIpcProc.running = true
   }
 
-  function refreshModel() {
-    displayModel.clear()
-    var pm = root.service && root.service.popupModel ? root.service.popupModel : null
-    if (!pm) return
-    for (var i = 0; i < pm.count; i++) {
+  function rowKey(originalId, timestamp) {
+    return String(originalId) + ":" + String(timestamp)
+  }
+
+  function hasRow(originalId, timestamp) {
+    var key = root.rowKey(originalId, timestamp)
+    for (var i = 0; i < root.displayModel.count; i++) {
+      if (root.rowKey(root.displayModel.get(i).originalId, root.displayModel.get(i).timestamp) === key) return true
+    }
+    return false
+  }
+
+  function appendRow(row) {
+    if (!row || row.originalId < 0) return
+    if (root.dismissedKeys[root.rowKey(row.originalId, row.timestamp)]) return
+    root.displayModel.append({
+      app: row.app || "", appIcon: row.appIcon || "", summary: row.summary || "",
+      body: row.body || "", image: row.image || "", glyph: row.glyph || "",
+      exec: row.exec || "", urgency: row.urgency || 0,
+      originalId: row.originalId || 0, timestamp: row.timestamp || 0
+    })
+  }
+
+  // Mirror popupModel into the panel. Rows the service replays on request
+  // (replayPending) and its empty-history placeholder are absorbed: copied,
+  // then dismissed from the service model so they never surface as toasts.
+  // Toasts restored at startup are only absorbed once the panel is opened,
+  // and live toasts are reflected but stay on screen where they belong.
+  function syncFromModel() {
+    if (!root.service || !root.service.popupModel) return
+    var pm = root.service.popupModel
+    for (var i = pm.count - 1; i >= 0; i--) {
       var row = pm.get(i)
-      // Skip the service's "no recent notifications" placeholder row.
-      if (!row || row.originalId < 0) continue
-      displayModel.append({
-        app: row.app || "", appIcon: row.appIcon || "", summary: row.summary || "",
-        body: row.body || "", image: row.image || "", glyph: row.glyph || "",
-        exec: row.exec || "", urgency: row.urgency || 0,
-        originalId: row.originalId || 0, timestamp: row.timestamp || 0
-      })
+      if (!row) continue
+      if (row.originalId < 0) {
+        // The "no recent notifications" placeholder: kill it before the toast
+        // layer can paint it.
+        root.service.dismissPopup(i)
+        continue
+      }
+      var restored = typeof root.service.isRestoredRow === "function"
+        && root.service.isRestoredRow(row)
+      if (restored) {
+        if (root.opened || root.replayPending) {
+          if (!root.hasRow(row.originalId, row.timestamp)) root.appendRow(row)
+          root.service.dismissPopup(i)
+        }
+      } else if (root.opened) {
+        if (!root.hasRow(row.originalId, row.timestamp)) root.appendRow(row)
+      }
     }
   }
 
@@ -92,24 +139,48 @@ Panel {
   }
 
   function actOnRow(index) {
-    var entry = displayModel.get(index)
+    var entry = root.displayModel.get(index)
     if (!entry || !root.service) return
     var li = root.liveIndexFor(entry.originalId, entry.timestamp)
-    if (li >= 0 && typeof root.service.invokePopupDefault === "function")
+    if (li >= 0 && !root.service.isRestoredRow(root.service.popupModel.get(li))
+        && typeof root.service.invokePopupDefault === "function") {
       root.service.invokePopupDefault(li)
+      return
+    }
+    // History row: fire its stored command, or focus the sender app — the
+    // same fallback the service uses for restored toasts.
+    if (entry.exec) {
+      Util.execDetached(entry.exec)
+    } else if (entry.app) {
+      var shellPath = Quickshell.env("OMARCHY_PATH")
+      focusProc.command = [
+        shellPath ? shellPath + "/bin/omarchy-hyprland-focus-app" : "omarchy-hyprland-focus-app",
+        String(entry.app)
+      ]
+      focusProc.running = true
+    }
   }
 
   function dismissRow(index) {
-    var entry = displayModel.get(index)
-    if (!entry || !root.service) return
+    var entry = root.displayModel.get(index)
+    if (!entry) return
     var li = root.liveIndexFor(entry.originalId, entry.timestamp)
-    if (li >= 0 && typeof root.service.dismissPopup === "function")
+    if (li >= 0 && root.service && !root.service.isRestoredRow(root.service.popupModel.get(li))
+        && typeof root.service.dismissPopup === "function") {
       root.service.dismissPopup(li)
+    } else {
+      // A history row has no live counterpart to dismiss; forget it for the
+      // rest of this session so a later replay can't resurrect it.
+      root.dismissedKeys[root.rowKey(entry.originalId, entry.timestamp)] = true
+    }
+    root.displayModel.remove(index)
   }
 
   // Dismiss the on-screen toasts (the service archives them to history), then
   // wipe the recorded history through the public notifications IPC.
   function clearAll() {
+    root.displayModel.clear()
+    root.dismissedKeys = {}
     if (root.service && typeof root.service.clearPopups === "function")
       root.service.clearPopups()
     var shellPath = Quickshell.env("OMARCHY_PATH")
@@ -156,9 +227,8 @@ Panel {
 
   onOpenedChanged: {
     if (root.opened) {
-      root.lastModelCount = root.modelCount
       root.refreshFromService()
-      root.refreshModel()
+      root.syncFromModel()
       root.markSeen()
     }
   }
@@ -177,24 +247,28 @@ Panel {
     interval: 1000
     running: root.opened
     repeat: true
-    onTriggered: {
-      var n = root.modelCount
-      if (n !== root.lastModelCount) {
-        root.lastModelCount = n
-        root.refreshModel()
-      }
-    }
+    onTriggered: root.syncFromModel()
   }
 
+  // The replay batch lands asynchronously (a directory read). onModelCountChanged
+  // already fires for each row as it is inserted, so no extra polling is needed.
   Process {
     id: historyIpcProc
     running: false
   }
 
   Process {
+    id: focusProc
+    running: false
+  }
+
+  Process {
     id: clearIpcProc
     running: false
-    onExited: root.refreshModel()
+    onExited: {
+      root.displayModel.clear()
+      root.syncFromModel()
+    }
   }
 
   KeyboardPanel {
@@ -214,7 +288,7 @@ Panel {
       onTextKey: function(t) {
         if (t === "r" || t === "R") {
           root.refreshFromService()
-          root.refreshModel()
+          root.syncFromModel()
         }
       }
 
