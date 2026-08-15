@@ -233,6 +233,15 @@ Panel {
     }
   }
 
+  // Drive absorption from the model's own count signal. A binding on
+  // service.popupModel.count through the var-typed `service` property is not
+  // guaranteed to re-evaluate, which let the empty-history placeholder slip
+  // through as an OSD toast.
+  Connections {
+    target: root.service ? root.service.popupModel : null
+    function onCountChanged() { root.syncFromModel() }
+  }
+
   IpcHandler {
     target: root.ipcTarget
     function open() { root.open() }
