@@ -4,6 +4,7 @@
   "name": "Notification Center",
   "version": "0.1.0",
   "author": "Esh",
+  "license": "MIT",
   "description": "Bar button that opens a panel listing live and recent notifications",
   "kinds": [
     "bar-widget"
