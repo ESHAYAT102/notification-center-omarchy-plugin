@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "esh.notification-center",
+  "name": "Notification Center",
+  "version": "0.1.0",
+  "author": "Esh",
+  "description": "Bar button that opens a panel listing live and recent notifications",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Notification Center",
+    "description": "Opens a panel listing live and recent notifications",
+    "category": "System",
+    "allowMultiple": false
+  }
+}
