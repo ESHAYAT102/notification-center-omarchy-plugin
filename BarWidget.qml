@@ -59,8 +59,8 @@ BarWidget {
     bar: root.bar
     text: root.service && root.service.doNotDisturb === true ? "\uf1f6" : "\uf0f3"
     tooltipText: root.service && root.service.doNotDisturb === true
-      ? "DND on — right-click to allow"
-      : "Notification Center (" + root.liveCount + ") — right-click to silence"
+      ? "DND on"
+      : "Notification Center (" + root.liveCount + ")"
     onPressed: function(button) {
       if (button === Qt.RightButton) root.toggleDnd()
       else if (button === Qt.LeftButton) root.toggle()
