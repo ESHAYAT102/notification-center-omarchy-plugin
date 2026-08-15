@@ -7,10 +7,8 @@ the icon to a bell-slash while notifications are silenced.
 ## Install
 
 ```sh
-omarchy plugin add https://github.com/<your-user>/esh.notification-center --enable
+omarchy plugin add https://github.com/ESHAYAT102/notification-center-omarchy-plugin --enable
 ```
-
-Replace `<your-user>` with your GitHub username once the repository is pushed.
 
 ## Usage
 
@@ -39,7 +37,6 @@ omarchy plugin remove esh.notification-center
 
 ## Notes
 
-- Notifications silenced by Do Not Disturb do not create popups, matching the
-  built-in Omarchy behavior.
-- The plugin reads live popups and persisted notification history from the
-  `omarchy.notifications` service; no extra services or privileges are used.
+- Notifications silenced by Do Not Disturb do not create popups, matching the built-in Omarchy behavior.
+- The plugin reads live popups and persisted notification history from the `omarchy.notifications` service; no extra services or privileges are used.
+

@@ -3,9 +3,9 @@
   "id": "esh.notification-center",
   "name": "Notification Center",
   "version": "0.1.0",
-  "author": "Esh",
+  "author": "Eshayat Al-Wasiu",
   "license": "MIT",
-  "description": "Bar button that opens a panel listing live and recent notifications",
+  "description": "Notification center in the menu bar",
   "kinds": [
     "bar-widget"
   ],
@@ -14,7 +14,7 @@
   },
   "barWidget": {
     "displayName": "Notification Center",
-    "description": "Opens a panel listing live and recent notifications",
+    "description": "Opens a panel listing all notifications",
     "category": "System",
     "allowMultiple": false
   }
