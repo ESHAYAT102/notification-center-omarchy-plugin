@@ -106,7 +106,7 @@ Panel {
   function syncFromModel() {
     if (!root.service || !root.service.popupModel) return
     var pm = root.service.popupModel
-    for (var i = pm.count - 1; i >= 0; i--) {
+    for (var i = 0; i < pm.count; i++) {
       var row = pm.get(i)
       if (!row) continue
       if (row.originalId < 0) {
@@ -141,17 +141,31 @@ Panel {
   function actOnRow(index) {
     var entry = root.displayModel.get(index)
     if (!entry || !root.service) return
+
+    // Try the notification's default D-Bus action first (works for both live
+    // and restored rows that still sit in popupModel).
     var li = root.liveIndexFor(entry.originalId, entry.timestamp)
-    if (li >= 0 && !root.service.isRestoredRow(root.service.popupModel.get(li))
-        && typeof root.service.invokePopupDefault === "function") {
+    if (li >= 0 && typeof root.service.invokePopupDefault === "function") {
       root.service.invokePopupDefault(li)
       return
     }
-    // History row: fire its stored command, or focus the sender app — the
-    // same fallback the service uses for restored toasts.
+
+    // History row: fire its stored command…
     if (entry.exec) {
       Util.execDetached(entry.exec)
-    } else if (entry.app) {
+      return
+    }
+
+    // …or try to open a URL extracted from the body text.
+    var body = String(entry.body || "")
+    var urlMatch = body.match(/https?:\/\/[^\s<>"]+/)
+    if (urlMatch) {
+      Util.execDetached("xdg-open " + urlMatch[0])
+      return
+    }
+
+    // Last resort: focus the sender application window.
+    if (entry.app) {
       var shellPath = Quickshell.env("OMARCHY_PATH")
       focusProc.command = [
         shellPath ? shellPath + "/bin/omarchy-hyprland-focus-app" : "omarchy-hyprland-focus-app",
