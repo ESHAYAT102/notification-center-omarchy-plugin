@@ -389,6 +389,18 @@ Panel {
     }
   }
 
+  function removeActivatedRow(originalId, timestamp) {
+    var key = root.rowKey(originalId, timestamp)
+    root.dismissedKeys[key] = true
+    root.forgetLiveKey(key)
+    // Let the row MouseArea finish its click before destroying its delegate;
+    // otherwise the release can fall through to the panel's dismiss overlay.
+    Qt.callLater(function() {
+      var index = root.displayIndexFor(originalId, timestamp)
+      if (index >= 0) root.displayModel.remove(index)
+    })
+  }
+
   function actOnRow(index) {
     var entry = root.displayModel.get(index)
     if (!entry) return
@@ -399,34 +411,34 @@ Panel {
     var li = root.liveIndexFor(entry.originalId, entry.timestamp)
     if (li < 0 && root.heldKeys[root.rowKey(entry.originalId, entry.timestamp)]) {
       if (root.invokeHeldDefault(entry)) {
-        root.close()
+        root.removeActivatedRow(entry.originalId, entry.timestamp)
         return
       }
       root.releaseHeld(entry, "dismiss")
     }
     if (li >= 0 && root.service && typeof root.service.invokePopupDefault === "function") {
-      root.close()
       root.forgetLiveKey(root.rowKey(entry.originalId, entry.timestamp))
       root.service.invokePopupDefault(li)
+      root.removeActivatedRow(entry.originalId, entry.timestamp)
       return
     }
 
     if (entry.exec) {
-      root.close()
       Util.execDetached(entry.exec)
+      root.removeActivatedRow(entry.originalId, entry.timestamp)
       return
     }
 
     var body = String(entry.body || "")
     var urlMatch = body.match(/https?:\/\/[^\s<>"]+/)
     if (urlMatch) {
-      root.close()
       Util.execDetached("xdg-open " + Util.shellQuote(urlMatch[0]))
+      root.removeActivatedRow(entry.originalId, entry.timestamp)
       return
     }
 
-    root.close()
     root.focusAppEntry(entry)
+    root.removeActivatedRow(entry.originalId, entry.timestamp)
   }
 
   function focusAppEntry(entry) {
