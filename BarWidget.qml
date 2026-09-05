@@ -7,9 +7,26 @@ BarWidget {
   moduleName: "esh.notification-center"
 
   readonly property bool opened: panelLoader.item ? panelLoader.item.opened === true : false
-  readonly property var service: bar && bar.shell ? bar.shell.firstPartyServiceFor("omarchy.notifications") : null
-  readonly property int liveCount: service && service.popupModel ? service.popupModel.count : 0
+  readonly property var service: bar && bar.shell ? bar.shell.serviceFor("esh.notification-center") : null
+  readonly property int liveCount: service && service.centerModel ? service.centerModel.count : 0
   readonly property bool unseen: panelLoader.item ? panelLoader.item.unseen === true : false
+
+  function applySettings() {
+    if (!service) return
+    var stacking = setting("stacking", "source")
+    if ((stacking === "all" || stacking === "source") && service.stacking !== stacking)
+      service.commit(function() { service.stacking = stacking })
+    service.actionsAlign = setting("actionsAlign", "right")
+    service.hideSettingsAction = setting("hideSettingsAction", true) !== false
+    service.smartRaise = setting("smartRaise", true) !== false
+    service.wakeHour = Number(setting("wakeHour", 8)) || 8
+    service.snoozeChoices = setting("snoozeDurations", ["30", "60", "240", "tomorrow"])
+    var codes = setting("codesBypassQuiet", null)
+    if (codes !== null) service.setCodesBypassQuiet(codes !== false)
+  }
+
+  onServiceChanged: applySettings()
+  Component.onCompleted: applySettings()
 
   function injectPanel() {
     var target = panelLoader.item
@@ -40,7 +57,7 @@ BarWidget {
   implicitHeight: button.implicitHeight
 
   onBarChanged: injectPanel()
-  onSettingsChanged: injectPanel()
+  onSettingsChanged: { injectPanel(); applySettings() }
 
   Loader {
     id: panelLoader
