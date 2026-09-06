@@ -421,7 +421,10 @@ Item {
     at = 0
     while (at < centerRows.count && centerRows.get(at).ts > row.ts) at++
     centerRows.insert(at, Store.normalise(row))
-    if (centerRows.count > 200) centerRows.remove(200, centerRows.count - 200)
+    while (centerRows.count > 200) {
+      release(centerRows.get(200).key)
+      centerRows.remove(200)
+    }
   }
 
   function dismissCenter(key) {
@@ -437,7 +440,10 @@ Item {
   function clearCenter() {
     historyCleared = true
     for (var i = 0; i < toasts.count; i++) forgottenKeys[toasts.get(i).key] = true
-    for (var j = 0; j < centerRows.count; j++) forgottenKeys[centerRows.get(j).key] = true
+    for (var j = 0; j < centerRows.count; j++) {
+      forgottenKeys[centerRows.get(j).key] = true
+      release(centerRows.get(j).key)
+    }
     for (var k = 0; k < held.length; k++) {
       forgottenKeys[held[k].key] = true
       release(held[k].key)
@@ -457,7 +463,10 @@ Item {
     onTriggered: {
       var cutoff = Date.now() / 1000 - 7 * 86400
       for (var i = centerRows.count - 1; i >= 0; i--)
-        if (centerRows.get(i).ts < cutoff) centerRows.remove(i)
+        if (centerRows.get(i).ts < cutoff) {
+          service.release(centerRows.get(i).key)
+          centerRows.remove(i)
+        }
     }
   }
 
@@ -817,7 +826,12 @@ Item {
 
     // replaces_id: the sender is updating something already on screen.
     var replacing = rowIndexForOriginal(notification.id)
-    var key = replacing >= 0 ? toasts.get(replacing).key : nextKey()
+    var key = replacing >= 0 ? toasts.get(replacing).key : ""
+    if (!key) {
+      for (var existing in refs)
+        if (refs[existing].id === notification.id) { key = existing; break }
+    }
+    if (!key) key = nextKey()
 
     var row = Store.snapshot(notification, key, NotificationUrgency)
     row.duration = durationFor(notification.urgency, row.expireTimeout)
@@ -851,7 +865,7 @@ Item {
     if (muted && notification.urgency !== NotificationUrgency.Critical) {
       Store.write(storeProc, storeBin, "put", row)
       Store.write(storeProc, storeBin, "close", null, [key, muted])
-      release(key)
+      if (notification.transient) release(key)
       return
     }
 
@@ -907,6 +921,7 @@ Item {
     if (!ref) return
     try { ref.tracked = false } catch (e) {}
     delete refs[key]
+    refsRevision += 1
   }
 
   // ------------------------------------------------------------- departure
@@ -940,18 +955,17 @@ Item {
     var at = rowIndexFor(key)
     if (at < 0) return
     var ref = refs[key]
-    if (ref) {
-      // Tell the sender which way it went: expired and dismissed are
-      // different events on the bus, and some apps act on the difference.
-      try {
-        if (reason === "expired" && typeof ref.expire === "function") ref.expire()
-        else ref.dismiss()
-      } catch (e) {}
+    // Hiding a popup must not close the browser's callback: the center still
+    // needs it to open the original tab/conversation.
+    var keep = centerIndexFor(key) >= 0 && !forgottenKeys[key]
+               && reason !== "activated" && reason !== "cleared"
+               && ref && !ref.transient
+    if (!keep) {
+      if (ref && reason === "expired") {
+        try { ref.expire() } catch (e) {}
+      }
+      release(key)
     }
-    release(key)
-    refsRevision += 1
-    var centerAt = centerIndexFor(key)
-    if (centerAt >= 0) centerRows.setProperty(centerAt, "replyPath", "")
     toasts.remove(at)
     delete heights[key]
     Store.write(storeProc, storeBin, forgottenKeys[key] ? "drop" : "close", null, [key, reason])
@@ -1004,6 +1018,7 @@ Item {
       }
     }
     closeToast(key, "activated")
+    if (rowIndexFor(key) < 0) release(key)
   }
 
   // ------------------------------------------------------- source routing
@@ -1225,6 +1240,7 @@ Item {
       }
     }
     closeToast(key, "activated")
+    if (rowIndexFor(key) < 0) release(key)
   }
 
   // ------------------------------------------------------------- replying

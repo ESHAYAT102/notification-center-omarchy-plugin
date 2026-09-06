@@ -16,7 +16,8 @@ with tempfile.TemporaryDirectory(prefix="notification-center-test-") as temporar
     # Drive hover explicitly below; the user's real pointer must not affect timing.
     service_file = root / "Service.qml"
     service_file.write_text(service_file.read_text().replace(
-        "id: hoverArea", "id: hoverArea; enabled: false"))
+        "id: hoverArea", "id: hoverArea; enabled: false").replace(
+        "readonly property int normalDuration: 8000", "readonly property int normalDuration: 1200"))
     for name in ("Commons", "Ui"):
         (root / name).symlink_to(Path("/usr/share/omarchy/shell") / name)
     (root / "bin").mkdir()
@@ -39,8 +40,11 @@ import "Store.js" as Store
 ShellRoot {
   Service { id: service; fetchIcons: false }
   BarWidget {} // Compile and instantiate the center UI too.
-  Process { id: sender; command: ["notify-send", "-a", "Center test", "-t", "1200",
-      "Verification code", "Your verification code is 123456"] }
+  Process { id: sender; command: ["notify-send", "-a", "Center test", "-t", "0", "--action=default=Open",
+      "Verification code", "Your verification code is 123456"]
+    stdout: StdioCollector { onStreamFinished: actionResult = text.trim() }
+  }
+  property string actionResult: ""
   property int step: 0
   property string key: ""
   function check(ok, message) { if (!ok) throw new Error(message) }
@@ -69,24 +73,35 @@ ShellRoot {
       if (step === 6) {
         check(service.rowIndexFor(key) < 0, "popup failed to expire")
         check(service.centerModel.count === 1, "expiry lost history")
+        check(!!service.refs[key], "expiry destroyed sender action")
+        service.activate(key)
         service.dismissCenter(key)
         check(service.centerModel.count === 0, "dismiss failed")
         service.remember(Store.normalise({key: key, ts: Date.now()/1000}))
         check(service.centerModel.count === 0, "dismissed row resurrected")
         service.setDoNotDisturb(true)
         service.setCodesBypassQuiet(false)
+      }
+      if (step === 7) {
+        check(actionResult === "default", "expired center click did not reach sender: " + actionResult)
         sender.running = true
       }
       if (step === 8) {
         check(service.centerModel.count === 1, "muted notification not recorded")
         key = String(service.centerModel.get(0).key)
         check(service.rowIndexFor(key) < 0, "muted notification became popup")
+        check(!!service.refs[key], "DND destroyed sender action")
+        actionResult = ""
+        service.activate(key)
         service.setDoNotDisturb(false)
         service.pointerIn = true
         service.commit(function() { service.expanded = true })
-        sender.running = true
       }
       if (step === 9) {
+        check(actionResult === "default", "DND center click did not reach sender: " + actionResult)
+        sender.running = true
+      }
+      if (step === 10) {
         check(service.centerModel.count === 2, "live and muted rows not merged")
         var newest = String(service.centerModel.get(0).key)
         check(service.rowIndexFor(newest) >= 0, "hover hid the incoming popup")
@@ -104,6 +119,7 @@ ShellRoot {
       if (step === 11) {
         check(service.centerModel.count === 0, "clear raced with queued arrival")
         check(service.rowIndexFor("pending") < 0, "cleared popup resurrected")
+        check(Object.keys(service.refs).length === 0, "clear leaked sender callbacks")
         console.log("CENTER_RUNTIME_OK")
         Qt.quit()
       }

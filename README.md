@@ -36,8 +36,10 @@ Restart with `omarchy restart shell`. Do not replace your other plugin or bar en
   notifications. Opening it pauses popup expiry and never replays history as popups.
 - Dismiss a center card to remove it from history; Clear all clears the center,
   pending notifications, and popups. Popup dismissal alone retains history.
-- Sender actions and inline reply are available while the notification is live.
-  Archived notifications retain detected copy/link actions and source navigation.
+- Sender actions remain available in the center after popup expiry and during
+  Do Not Disturb, until the sender closes them or the shell restarts. Clicking
+  invokes the app’s original action (including browser tab/conversation navigation).
+  Restored notifications retain detected copy/link actions and source navigation.
 - Omapager's quiet rules apply: critical notifications and, by default,
   verification codes can bypass DND. Set `codesBypassQuiet` to `false` to block codes.
 
