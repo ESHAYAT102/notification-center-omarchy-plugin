@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Revert to esh.notification-center as the notification daemon.
-# Removes the cloned esh.notifications plugin and restarts the shell.
+# Revert to Omarchy's default notification daemon (omarchy.notifications).
+# Removes esh.notification-center from plugins and the bar, re-enables
+# omarchy.notifications, and restarts the shell.
 #
 # Usage: bash bin/uninstall
 
@@ -13,40 +14,27 @@ if [[ ! -f "$SHELL_JSON" ]]; then
   exit 1
 fi
 
-# 1. Patch shell.json
 echo "Updating shell.json..."
 
 tmp=$(mktemp)
 cp "$SHELL_JSON" "$tmp"
 
-# Remove esh.notifications from plugins
-jq '.plugins = [.plugins[]? | select(.id != "esh.notifications")]' "$tmp" > "$tmp.new" && mv "$tmp.new" "$tmp"
+# Remove esh.notification-center from plugins
+jq '.plugins = [.plugins[]? | select(.id != "esh.notification-center")]' "$tmp" > "$tmp.new" && mv "$tmp.new" "$tmp"
 
-# Remove esh.notification-center from disabledPlugins (re-enable its service)
+# Remove esh.notification-center from the bar layout
+jq '.bar.layout.right = [.bar.layout.right[]? | select(.id != "esh.notification-center")]' "$tmp" > "$tmp.new" && mv "$tmp.new" "$tmp"
+
+# Remove esh.notification-center from disabledPlugins
 jq '.disabledPlugins = [.disabledPlugins[]? | select(. != "esh.notification-center")]' "$tmp" > "$tmp.new" && mv "$tmp.new" "$tmp"
 
-# Ensure esh.notification-center is in plugins
-if ! jq -e '.plugins[]? | select(.id == "esh.notification-center")' "$tmp" >/dev/null 2>&1; then
-  jq '.plugins += [{"id": "esh.notification-center"}]' "$tmp" > "$tmp.new" && mv "$tmp.new" "$tmp"
-fi
-
-# Ensure esh.notification-center is in the bar layout
-if ! jq -e '.bar.layout.right[]? | select(.id == "esh.notification-center")' "$tmp" >/dev/null 2>&1; then
-  jq '.bar.layout.right += [{"id": "esh.notification-center"}]' "$tmp" > "$tmp.new" && mv "$tmp.new" "$tmp"
-fi
+# Re-enable omarchy.notifications
+jq '.disabledPlugins = [.disabledPlugins[]? | select(. != "omarchy.notifications")]' "$tmp" > "$tmp.new" && mv "$tmp.new" "$tmp"
 
 mv "$tmp" "$SHELL_JSON"
 echo "shell.json updated."
 
-# 2. Remove cloned esh.notifications plugin
-NOTIF_DIR="${HOME}/.config/omarchy/plugins/esh.notifications"
-if [[ -d "$NOTIF_DIR" ]]; then
-  echo "Removing cloned esh.notifications plugin..."
-  rm -rf "$NOTIF_DIR"
-fi
-
-# 3. Restart shell
 echo "Restarting shell..."
 omarchy restart shell
 
-echo "Done. esh.notification-center is now the notification daemon."
+echo "Done. Reverted to omarchy.notifications as the notification daemon."

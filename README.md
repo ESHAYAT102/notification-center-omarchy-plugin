@@ -11,45 +11,22 @@ inline phone replies, and snoozing come from omapager.
 omarchy plugin add https://github.com/ESHAYAT102/notification-center-omarchy-plugin --enable
 ```
 
-### Use `omarchy.notifications` as the notification daemon
-
-If you want the stock Omarchy notification daemon (`omarchy.notifications`) to
-handle popups, DND, and history — while keeping `esh.notification-center` only
-as a bar widget — run the install script:
+Then run the install script to set up the daemon:
 
 ```sh
 cd ~/.config/omarchy/plugins/esh.notification-center
 bash bin/install
 ```
 
-This clones `omarchy.notifications`, patches `shell.json`, and restarts the shell.
-`omarchy.notifications` owns the notification bus; `esh.notification-center`
-remains visible in the bar as a widget.
+This disables `omarchy.notifications`, adds `esh.notification-center` to
+`plugins` and the bar layout, and restarts the shell. Only one daemon can
+own the notification bus.
 
-To revert back to `esh.notification-center` as the daemon:
+To revert to Omarchy's default daemon:
 
 ```sh
-cd ~/.config/omarchy/plugins/esh.notification-center
 bash bin/uninstall
 ```
-
-### Use `esh.notification-center` as the notification daemon (default)
-
-This plugin owns the notification service. In `~/.config/omarchy/shell.json`,
-add `omarchy.notifications` to `disabledPlugins` and keep
-`esh.notification-center` enabled in `plugins` and the bar layout. If you already
-have `njpatel.omapager` installed, disable it too: only one daemon can own the
-notification bus. Merge these entries into your existing configuration:
-
-```json
-{
-  "disabledPlugins": ["omarchy.notifications", "njpatel.omapager"],
-  "plugins": [{"id": "esh.notification-center"}],
-  "bar": {"layout": {"right": ["esh.notification-center"]}}
-}
-```
-
-Restart with `omarchy restart shell`. Do not replace your other plugin or bar entries.
 
 ## Usage
 
@@ -85,8 +62,11 @@ Inline widget settings support `stacking`, `actionsAlign`, `hideSettingsAction`,
 
 ## Remove
 
-Remove with `omarchy plugin remove esh.notification-center`, re-enable either
-`omarchy.notifications` or `njpatel.omapager`, and restart the shell.
+```sh
+bash bin/uninstall
+omarchy plugin remove esh.notification-center
+```
+
 Stored history is retained.
 
 See THIRD_PARTY.md and LICENSE.omapager for upstream attribution.

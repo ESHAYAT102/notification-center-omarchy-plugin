@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Switch to omarchy.notifications as the notification daemon.
-# esh.notification-center stays in the bar as a widget only.
+# Set up esh.notification-center as the notification daemon.
+# Disables omarchy.notifications so only one daemon owns the bus.
 #
 # Usage: bash bin/install
 
@@ -13,46 +13,30 @@ if [[ ! -f "$SHELL_JSON" ]]; then
   exit 1
 fi
 
-# 1. Clone omarchy.notifications if not already present
-if [[ ! -d "${HOME}/.config/omarchy/plugins/esh.notifications" ]]; then
-  echo "Cloning omarchy.notifications..."
-  omarchy plugin clone omarchy.notifications
-else
-  echo "esh.notifications already cloned, skipping."
-fi
-
-# 2. Patch shell.json
 echo "Updating shell.json..."
 
 tmp=$(mktemp)
 cp "$SHELL_JSON" "$tmp"
 
-# Add esh.notifications to plugins if missing
-if ! jq -e '.plugins[]? | select(.id == "esh.notifications")' "$tmp" >/dev/null 2>&1; then
-  jq '.plugins += [{"id": "esh.notifications"}]' "$tmp" > "$tmp.new" && mv "$tmp.new" "$tmp"
+# Ensure esh.notification-center is in plugins
+if ! jq -e '.plugins[]? | select(.id == "esh.notification-center")' "$tmp" >/dev/null 2>&1; then
+  jq '.plugins += [{"id": "esh.notification-center"}]' "$tmp" > "$tmp.new" && mv "$tmp.new" "$tmp"
 fi
 
-# Disable esh.notification-center service (keeps bar widget, kills daemon)
-if ! jq -e '.disabledPlugins[]? | select(. == "esh.notification-center")' "$tmp" >/dev/null 2>&1; then
-  jq '.disabledPlugins += ["esh.notification-center"]' "$tmp" > "$tmp.new" && mv "$tmp.new" "$tmp"
-fi
-
-# Ensure esh.notification-center stays in the bar layout
+# Ensure esh.notification-center is in the bar layout
 if ! jq -e '.bar.layout.right[]? | select(.id == "esh.notification-center")' "$tmp" >/dev/null 2>&1; then
   jq '.bar.layout.right += [{"id": "esh.notification-center"}]' "$tmp" > "$tmp.new" && mv "$tmp.new" "$tmp"
 fi
 
-# Ensure esh.notification-center is in plugins (needed for the bar widget)
-if ! jq -e '.plugins[]? | select(.id == "esh.notification-center")' "$tmp" >/dev/null 2>&1; then
-  jq '.plugins += [{"id": "esh.notification-center"}]' "$tmp" > "$tmp.new" && mv "$tmp.new" "$tmp"
+# Disable omarchy.notifications so it doesn't fight over the bus
+if ! jq -e '.disabledPlugins[]? | select(. == "omarchy.notifications")' "$tmp" >/dev/null 2>&1; then
+  jq '.disabledPlugins += ["omarchy.notifications"]' "$tmp" > "$tmp.new" && mv "$tmp.new" "$tmp"
 fi
 
 mv "$tmp" "$SHELL_JSON"
 echo "shell.json updated."
 
-# 3. Restart shell
 echo "Restarting shell..."
 omarchy restart shell
 
-echo "Done. omarchy.notifications is now the notification daemon."
-echo "esh.notification-center remains in the bar as a widget."
+echo "Done. esh.notification-center is the notification daemon."
