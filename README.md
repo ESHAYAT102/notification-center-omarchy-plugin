@@ -15,25 +15,23 @@ omarchy plugin add https://github.com/ESHAYAT102/notification-center-omarchy-plu
 
 If you want the stock Omarchy notification daemon (`omarchy.notifications`) to
 handle popups, DND, and history — while keeping `esh.notification-center` only
-as a bar widget — clone `omarchy.notifications` and add it to your plugins:
+as a bar widget — run the install script:
 
 ```sh
-omarchy plugin clone omarchy.notifications
+cd ~/.config/omarchy/plugins/esh.notification-center
+bash bin/install-daemon
 ```
 
-Then edit `~/.config/omarchy/shell.json`:
+This clones `omarchy.notifications`, patches `shell.json`, and restarts the shell.
+`omarchy.notifications` owns the notification bus; `esh.notification-center`
+remains visible in the bar as a widget.
 
-```json
-{
-  "disabledPlugins": ["esh.notification-center"],
-  "plugins": [{"id": "esh.notifications"}],
-  "bar": {"layout": {"right": ["esh.notification-center"]}}
-}
+To revert back to `esh.notification-center` as the daemon:
+
+```sh
+cd ~/.config/omarchy/plugins/esh.notification-center
+bash bin/uninstall-daemon
 ```
-
-This disables `esh.notification-center`'s service (so it does not fight over
-the notification bus) but keeps its bar widget visible. `omarchy.notifications`
-owns the bus and handles all popups. Restart with `omarchy restart shell`.
 
 ### Use `esh.notification-center` as the notification daemon (default)
 

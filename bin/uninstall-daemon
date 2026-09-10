@@ -1,0 +1,53 @@
+#!/usr/bin/env bash
+# Revert to Omarchy's default notification daemon (omarchy.notifications).
+# Removes the cloned esh.notifications plugin, re-enables esh.notification-center
+# as the daemon, and restarts the shell.
+#
+# Usage: bash bin/uninstall-daemon
+
+set -euo pipefail
+
+SHELL_JSON="${HOME}/.config/omarchy/shell.json"
+
+if [[ ! -f "$SHELL_JSON" ]]; then
+  echo "Error: $SHELL_JSON not found" >&2
+  exit 1
+fi
+
+# 1. Patch shell.json
+echo "Updating shell.json..."
+
+tmp=$(mktemp)
+cp "$SHELL_JSON" "$tmp"
+
+# Remove esh.notifications from plugins
+jq '.plugins = [.plugins[]? | select(.id != "esh.notifications")]' "$tmp" > "$tmp.new" && mv "$tmp.new" "$tmp"
+
+# Remove esh.notification-center from disabledPlugins (re-enable its service)
+jq '.disabledPlugins = [.disabledPlugins[]? | select(. != "esh.notification-center")]' "$tmp" > "$tmp.new" && mv "$tmp.new" "$tmp"
+
+# Ensure esh.notification-center is in plugins
+if ! jq -e '.plugins[]? | select(.id == "esh.notification-center")' "$tmp" >/dev/null 2>&1; then
+  jq '.plugins += [{"id": "esh.notification-center"}]' "$tmp" > "$tmp.new" && mv "$tmp.new" "$tmp"
+fi
+
+# Ensure esh.notification-center is in the bar layout
+if ! jq -e '.bar.layout.right[]? | select(.id == "esh.notification-center")' "$tmp" >/dev/null 2>&1; then
+  jq '.bar.layout.right += [{"id": "esh.notification-center"}]' "$tmp" > "$tmp.new" && mv "$tmp.new" "$tmp"
+fi
+
+mv "$tmp" "$SHELL_JSON"
+echo "shell.json updated."
+
+# 2. Remove cloned esh.notifications plugin
+NOTIF_DIR="${HOME}/.config/omarchy/plugins/esh.notifications"
+if [[ -d "$NOTIF_DIR" ]]; then
+  echo "Removing cloned esh.notifications plugin..."
+  rm -rf "$NOTIF_DIR"
+fi
+
+# 3. Restart shell
+echo "Restarting shell..."
+omarchy restart shell
+
+echo "Done. Reverted to esh.notification-center as the notification daemon."

@@ -1,0 +1,58 @@
+#!/usr/bin/env bash
+# Install omarchy.notifications as the notification daemon while keeping
+# esh.notification-center as a bar widget only.
+#
+# Usage: bash bin/install-daemon
+
+set -euo pipefail
+
+SHELL_JSON="${HOME}/.config/omarchy/shell.json"
+
+if [[ ! -f "$SHELL_JSON" ]]; then
+  echo "Error: $SHELL_JSON not found" >&2
+  exit 1
+fi
+
+# 1. Clone omarchy.notifications if not already present
+if [[ ! -d "${HOME}/.config/omarchy/plugins/esh.notifications" ]]; then
+  echo "Cloning omarchy.notifications..."
+  omarchy plugin clone omarchy.notifications
+else
+  echo "esh.notifications already cloned, skipping."
+fi
+
+# 2. Patch shell.json
+echo "Updating shell.json..."
+
+tmp=$(mktemp)
+cp "$SHELL_JSON" "$tmp"
+
+# Add esh.notifications to plugins if missing
+if ! jq -e '.plugins[]? | select(.id == "esh.notifications")' "$tmp" >/dev/null 2>&1; then
+  jq '.plugins += [{"id": "esh.notifications"}]' "$tmp" > "$tmp.new" && mv "$tmp.new" "$tmp"
+fi
+
+# Add esh.notification-center to disabledPlugins (kills its service, keeps bar widget)
+if ! jq -e '.disabledPlugins[]? | select(. == "esh.notification-center")' "$tmp" >/dev/null 2>&1; then
+  jq '.disabledPlugins += ["esh.notification-center"]' "$tmp" > "$tmp.new" && mv "$tmp.new" "$tmp"
+fi
+
+# Ensure esh.notification-center stays in the bar layout
+if ! jq -e '.bar.layout.right[]? | select(.id == "esh.notification-center")' "$tmp" >/dev/null 2>&1; then
+  jq '.bar.layout.right += [{"id": "esh.notification-center"}]' "$tmp" > "$tmp.new" && mv "$tmp.new" "$tmp"
+fi
+
+# Ensure esh.notification-center is still in plugins (needed for the bar widget)
+if ! jq -e '.plugins[]? | select(.id == "esh.notification-center")' "$tmp" >/dev/null 2>&1; then
+  jq '.plugins += [{"id": "esh.notification-center"}]' "$tmp" > "$tmp.new" && mv "$tmp.new" "$tmp"
+fi
+
+mv "$tmp" "$SHELL_JSON"
+echo "shell.json updated."
+
+# 3. Restart shell
+echo "Restarting shell..."
+omarchy restart shell
+
+echo "Done. omarchy.notifications is now the notification daemon."
+echo "esh.notification-center remains in the bar as a widget."
