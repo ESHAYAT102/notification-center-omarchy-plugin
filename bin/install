@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Install omarchy.notifications as the notification daemon while keeping
-# esh.notification-center as a bar widget only.
+# Switch to omarchy.notifications as the notification daemon.
+# esh.notification-center stays in the bar as a widget only.
 #
-# Usage: bash bin/install-daemon
+# Usage: bash bin/install
 
 set -euo pipefail
 
@@ -32,7 +32,7 @@ if ! jq -e '.plugins[]? | select(.id == "esh.notifications")' "$tmp" >/dev/null 
   jq '.plugins += [{"id": "esh.notifications"}]' "$tmp" > "$tmp.new" && mv "$tmp.new" "$tmp"
 fi
 
-# Add esh.notification-center to disabledPlugins (kills its service, keeps bar widget)
+# Disable esh.notification-center service (keeps bar widget, kills daemon)
 if ! jq -e '.disabledPlugins[]? | select(. == "esh.notification-center")' "$tmp" >/dev/null 2>&1; then
   jq '.disabledPlugins += ["esh.notification-center"]' "$tmp" > "$tmp.new" && mv "$tmp.new" "$tmp"
 fi
@@ -42,7 +42,7 @@ if ! jq -e '.bar.layout.right[]? | select(.id == "esh.notification-center")' "$t
   jq '.bar.layout.right += [{"id": "esh.notification-center"}]' "$tmp" > "$tmp.new" && mv "$tmp.new" "$tmp"
 fi
 
-# Ensure esh.notification-center is still in plugins (needed for the bar widget)
+# Ensure esh.notification-center is in plugins (needed for the bar widget)
 if ! jq -e '.plugins[]? | select(.id == "esh.notification-center")' "$tmp" >/dev/null 2>&1; then
   jq '.plugins += [{"id": "esh.notification-center"}]' "$tmp" > "$tmp.new" && mv "$tmp.new" "$tmp"
 fi

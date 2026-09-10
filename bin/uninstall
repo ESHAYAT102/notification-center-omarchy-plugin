@@ -1,9 +1,8 @@
 #!/usr/bin/env bash
-# Revert to Omarchy's default notification daemon (omarchy.notifications).
-# Removes the cloned esh.notifications plugin, re-enables esh.notification-center
-# as the daemon, and restarts the shell.
+# Revert to esh.notification-center as the notification daemon.
+# Removes the cloned esh.notifications plugin and restarts the shell.
 #
-# Usage: bash bin/uninstall-daemon
+# Usage: bash bin/uninstall
 
 set -euo pipefail
 
@@ -50,4 +49,4 @@ fi
 echo "Restarting shell..."
 omarchy restart shell
 
-echo "Done. Reverted to esh.notification-center as the notification daemon."
+echo "Done. esh.notification-center is now the notification daemon."
