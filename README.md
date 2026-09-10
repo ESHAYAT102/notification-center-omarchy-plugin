@@ -19,7 +19,7 @@ as a bar widget — run the install script:
 
 ```sh
 cd ~/.config/omarchy/plugins/esh.notification-center
-bash bin/install-daemon
+bash bin/install
 ```
 
 This clones `omarchy.notifications`, patches `shell.json`, and restarts the shell.
@@ -30,7 +30,7 @@ To revert back to `esh.notification-center` as the daemon:
 
 ```sh
 cd ~/.config/omarchy/plugins/esh.notification-center
-bash bin/uninstall-daemon
+bash bin/uninstall
 ```
 
 ### Use `esh.notification-center` as the notification daemon (default)
