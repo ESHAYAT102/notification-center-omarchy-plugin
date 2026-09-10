@@ -11,7 +11,33 @@ inline phone replies, and snoozing come from omapager.
 omarchy plugin add https://github.com/ESHAYAT102/notification-center-omarchy-plugin --enable
 ```
 
-This plugin now owns the notification service. In `~/.config/omarchy/shell.json`,
+### Use `omarchy.notifications` as the notification daemon
+
+If you want the stock Omarchy notification daemon (`omarchy.notifications`) to
+handle popups, DND, and history — while keeping `esh.notification-center` only
+as a bar widget — clone `omarchy.notifications` and add it to your plugins:
+
+```sh
+omarchy plugin clone omarchy.notifications
+```
+
+Then edit `~/.config/omarchy/shell.json`:
+
+```json
+{
+  "disabledPlugins": ["esh.notification-center"],
+  "plugins": [{"id": "esh.notifications"}],
+  "bar": {"layout": {"right": ["esh.notification-center"]}}
+}
+```
+
+This disables `esh.notification-center`'s service (so it does not fight over
+the notification bus) but keeps its bar widget visible. `omarchy.notifications`
+owns the bus and handles all popups. Restart with `omarchy restart shell`.
+
+### Use `esh.notification-center` as the notification daemon (default)
+
+This plugin owns the notification service. In `~/.config/omarchy/shell.json`,
 add `omarchy.notifications` to `disabledPlugins` and keep
 `esh.notification-center` enabled in `plugins` and the bar layout. If you already
 have `njpatel.omapager` installed, disable it too: only one daemon can own the
