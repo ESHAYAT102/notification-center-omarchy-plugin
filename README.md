@@ -14,8 +14,7 @@ omarchy plugin add https://github.com/ESHAYAT102/notification-center-omarchy-plu
 Then run the install script to set up the daemon:
 
 ```sh
-cd ~/.config/omarchy/plugins/esh.notification-center
-bash bin/install
+~/.config/omarchy/plugins/esh.notification-center/bin/install
 ```
 
 This disables `omarchy.notifications`, adds `esh.notification-center` to
@@ -25,7 +24,7 @@ own the notification bus.
 To revert to Omarchy's default daemon:
 
 ```sh
-bash bin/uninstall
+~/.config/omarchy/plugins/esh.notification-center/bin/uninstall
 ```
 
 ## Usage
