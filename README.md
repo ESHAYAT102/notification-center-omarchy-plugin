@@ -62,7 +62,7 @@ Inline widget settings support `stacking`, `actionsAlign`, `hideSettingsAction`,
 ## Remove
 
 ```sh
-bash bin/uninstall
+~/.config/omarchy/plugins/esh.notification-center/bin/uninstall
 omarchy plugin remove esh.notification-center
 ```
 
