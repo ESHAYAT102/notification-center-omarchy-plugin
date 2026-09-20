@@ -821,6 +821,10 @@ Item {
 
   // ------------------------------------------------------------- arrival
   function handleNotification(notification) {
+    if (String(notification.summary || "").trim().toLowerCase() === "instagram"
+        && String(notification.body || "").trim().toLowerCase() === "you have unseen notifications.")
+      return
+
     // Without this the object is destroyed as soon as this handler returns,
     // taking the actions and the image with it.
     notification.tracked = true
