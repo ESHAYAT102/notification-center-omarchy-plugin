@@ -126,6 +126,7 @@ Panel {
   onOpenedChanged: {
     if (root.opened) {
       root.syncFromCenter()
+      root.service.clearAll("dismissed")
       root.markSeen()
     }
   }
