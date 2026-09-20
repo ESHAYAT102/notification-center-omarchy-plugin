@@ -1,5 +1,6 @@
 import QtQuick
-import QtQuick.Controls as Controls
+import QtQuick.Controls
+import Quickshell
 import Quickshell.Io
 import qs.Commons
 import qs.Ui
@@ -9,27 +10,145 @@ Panel {
   moduleName: "esh.notification-center"
   ipcTarget: "esh.notification-center"
   manageIpc: false
+
   property var anchorItem: null
   property var host: null
-  readonly property var service: bar && bar.shell ? bar.shell.serviceFor(moduleName) : null
-  property double seenThreshold: 0
-  readonly property int count: service ? service.centerModel.count : 0
-  onCountChanged: if (opened) seenThreshold = Date.now()
-  readonly property bool unseen: service && service.centerModel.count > 0
-    && service.centerModel.get(0).ts * 1000 > seenThreshold
+
+  readonly property var service: bar && bar.shell ? bar.shell.serviceFor("esh.notification-center") : null
+  readonly property color foreground: Color.popups.text
+  readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
+
+  // The service owns a history model separate from its live popup model.
+  // Rendering that model directly keeps one center row per notification and
+  // prevents live toasts from being copied again on every refresh.
+  property ListModel displayModel: ListModel { id: displayModel }
+  property real seenThreshold: 0
+
+  readonly property int modelCount: service && service.centerModel ? service.centerModel.count : 0
+
+  onModelCountChanged: root.syncFromCenter()
+  readonly property bool unseen: {
+    if (!root.service || !root.service.centerModel) return false
+    for (var i = 0; i < root.service.centerModel.count; i++) {
+      var row = root.service.centerModel.get(i)
+      if (row && Number(row.ts || 0) * 1000 > root.seenThreshold) return true
+    }
+    return false
+  }
+
+  function open() {
+    root.controller.show()
+  }
+
+  function close() {
+    root.controller.hide()
+  }
+
+  function toggle() {
+    root.opened ? root.close() : root.open()
+  }
+
+  function markSeen() {
+    root.seenThreshold = Date.now()
+  }
+
+  function appendRow(row) {
+    if (!row || !row.key) return
+    root.displayModel.append({
+      key: row.key,
+      app: row.app || "", appIcon: row.appIcon || "", summary: row.summary || "",
+      body: row.body || "", image: row.image || "", glyph: row.glyph || "",
+      exec: row.exec || "", urgency: row.urgency || 0,
+      originalId: row.originalId || 0, timestamp: Number(row.ts || 0) * 1000
+    })
+  }
+
+  function syncFromCenter() {
+    root.displayModel.clear()
+    if (!root.service || !root.service.centerModel) return
+    for (var i = 0; i < root.service.centerModel.count; i++)
+      root.appendRow(root.service.centerModel.get(i))
+  }
+
+  function actOnRow(index) {
+    var entry = root.displayModel.get(index)
+    if (!entry || !root.service) return
+    if (typeof root.service.activate === "function") root.service.activate(String(entry.key))
+  }
+
+  function dismissRow(index) {
+    var entry = root.displayModel.get(index)
+    if (!entry || !root.service) return
+    root.service.dismissCenter(String(entry.key))
+  }
+
+  // Dismiss the on-screen toasts (the service archives them to history), then
+  // wipe the recorded history through the public notifications IPC.
+  function clearAll() {
+    if (root.service && typeof root.service.clearCenter === "function")
+      root.service.clearCenter()
+  }
+
+  function relativeTime(ts) {
+    var n = Number(ts || 0)
+    if (!n) return ""
+    var diff = Math.max(0, Date.now() - n)
+    var min = Math.floor(diff / 60000)
+    if (min < 1) return "just now"
+    if (min < 60) return min + "m ago"
+    var hr = Math.floor(min / 60)
+    if (hr < 24) return hr + "h ago"
+    var d = Math.floor(hr / 24)
+    if (d < 7) return d + "d ago"
+    var date = new Date(n)
+    return (date.getMonth() + 1) + "/" + date.getDate()
+  }
+
+  function iconSource(icon) {
+    var value = String(icon || "")
+    if (value.length === 0) return ""
+    if (value.indexOf("file://") === 0 || value.indexOf("image://") === 0) return value
+    if (value.charAt(0) === "/") return Util.fileUrl(value)
+    return Quickshell.iconPath(value, true)
+  }
+
+  function sanitizeBody(body, app, appIcon) {
+    var text = String(body || "").replace(/<img[^>]*>/gi, "")
+    var source = (String(app || "") + "\n" + String(appIcon || "")).toLowerCase()
+    if (source.indexOf("chrom") < 0 && source.indexOf("brave") < 0
+        && source.indexOf("vivaldi") < 0 && source.indexOf("microsoft-edge") < 0
+        && source.indexOf("opera") < 0) return text
+    return text
+      .replace(/^\s*<a\b[^>]*>\s*(?:https?:\/\/|www\.)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:\/[^<\s]*)?\s*<\/a>\s*/i, "")
+      .replace(/^\s*(?:https?:\/\/|www\.)?(?:[a-z0-9-]+\.)+[a-z]{2,}(?::\d+)?(?:\/\S*)?\s+/i, "")
+  }
 
   onOpenedChanged: {
-    if (service) service.centerOpen = opened
-    if (opened) seenThreshold = Date.now()
+    if (root.opened) {
+      root.syncFromCenter()
+      root.markSeen()
+    }
   }
-  Component.onDestruction: if (service) service.centerOpen = false
+
+  Connections {
+    target: root.service ? root.service.centerModel : null
+    function onCountChanged() { root.syncFromCenter() }
+    function onDataChanged() { root.syncFromCenter() }
+  }
 
   IpcHandler {
     target: root.ipcTarget
-    function open(): void { root.open() }
-    function close(): void { root.close() }
-    function toggle(): void { root.toggle() }
-    function clear(): void { if (root.service) root.service.clearCenter() }
+    function open() { root.open() }
+    function close() { root.close() }
+    function show() { root.open() }
+    function hide() { root.close() }
+    function toggle() { root.toggle() }
+    function clear() { root.clearAll() }
+  }
+
+  Process {
+    id: focusProc
+    running: false
   }
 
   KeyboardPanel {
@@ -39,98 +158,248 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(380))
+    contentWidth: panel.fittedContentWidth(Style.space(340))
     contentHeight: panel.fittedContentHeight(Style.space(500), Style.space(500))
 
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
       onCloseRequested: root.close()
+      onTextKey: function(t) {
+        if (t === "r" || t === "R") {
+          root.refreshFromService()
+          root.syncFromModel()
+        }
+      }
+
+      ScrollView {
+        id: scrollArea
+        anchors.fill: parent
+        clip: true
+        ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+        ScrollBar.vertical.policy: panelColumn.implicitHeight > height ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+        Binding {
+          target: scrollArea.contentItem
+          property: "interactive"
+          value: panelColumn.implicitHeight > scrollArea.height
+        }
+
+        Column {
+          id: panelColumn
+          width: scrollArea.availableWidth
+          spacing: Style.space(10)
+
+          Item {
+            id: headerRow
+            width: parent.width
+            height: Math.max(headerTitle.implicitHeight, headerControls.implicitHeight)
+
+            Text {
+              id: headerTitle
+              anchors.left: parent.left
+              anchors.leftMargin: Style.spacing.md
+              anchors.verticalCenter: parent.verticalCenter
+              text: "Notifications"
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.title
+              font.bold: true
+            }
+
+            Row {
+              id: headerControls
+              anchors.right: parent.right
+              anchors.rightMargin: Style.spacing.md
+              anchors.verticalCenter: parent.verticalCenter
+              spacing: Style.space(12)
+
+              Text {
+                id: clearText
+                text: "Clear all"
+                visible: root.displayModel.count > 0
+                color: clearHover.hovered ? Style.hoverStateColor(root.foreground, Color.accent) : Color.muted
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+
+                MouseArea {
+                  id: clearHover
+                  anchors.fill: parent
+                  anchors.margins: -Style.space(4)
+                  hoverEnabled: true
+                  cursorShape: Qt.PointingHandCursor
+                  onClicked: root.clearAll()
+                }
+              }
+            }
+          }
+
+          PanelSeparator {}
+
+          Item {
+            id: emptyState
+            width: parent.width
+            implicitHeight: Style.space(72)
+            visible: root.displayModel.count === 0
+
+            Text {
+              anchors.centerIn: parent
+              text: "No notifications"
+              color: Color.muted
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.body
+            }
+          }
+
+          Repeater {
+            model: root.displayModel
+            delegate: rowComponent
+          }
+        }
+      }
+    }
+  }
+
+  Component {
+    id: rowComponent
+
+    Item {
+      id: row
+      required property var model
+      width: parent ? parent.width : 0
+
+      readonly property int iconSize: Style.space(26)
+      readonly property int rowPad: Style.space(6)
+      readonly property color rowForeground: root.foreground
+
+      height: Math.max(iconSize + rowPad * 2, textColumn.implicitHeight + rowPad * 2)
+
+      Rectangle {
+        anchors.fill: parent
+        radius: Style.cornerRadius
+        color: rowHover.hovered ? Style.hoverFillFor(row.rowForeground, Color.accent) : "transparent"
+      }
+
+      MouseArea {
+        id: rowHover
+        anchors.fill: parent
+        hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
+        onClicked: root.actOnRow(row.model.index)
+      }
+
+      Item {
+        id: iconSlot
+        width: row.iconSize
+        height: row.iconSize
+        anchors.left: parent.left
+        anchors.leftMargin: Style.spacing.md
+        anchors.verticalCenter: parent.verticalCenter
+
+        Image {
+          id: rowIcon
+          anchors.fill: parent
+          source: root.iconSource(row.model.image ? row.model.image : row.model.appIcon)
+          fillMode: Image.PreserveAspectFit
+          sourceSize.width: width * Screen.devicePixelRatio
+          sourceSize.height: height * Screen.devicePixelRatio
+          visible: status === Image.Ready
+        }
+
+        Text {
+          id: rowGlyph
+          anchors.centerIn: parent
+          text: row.model.glyph ? row.model.glyph : "\uf0f3"
+          color: row.rowForeground
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.icon
+          visible: !rowIcon.visible
+        }
+      }
 
       Column {
-        id: header
-        width: parent.width
-        spacing: Style.space(10)
-        Item {
+        id: textColumn
+        anchors.left: iconSlot.right
+        anchors.leftMargin: Style.spacing.md
+        anchors.right: dismissArea.left
+        anchors.rightMargin: Style.spacing.md
+        anchors.verticalCenter: parent.verticalCenter
+        spacing: Style.space(2)
+
+        Text {
+          id: summaryText
           width: parent.width
-          height: Math.max(title.implicitHeight, clearButton.implicitHeight)
-          Text {
-            id: title
-            anchors.left: parent.left
-            anchors.verticalCenter: parent.verticalCenter
-            text: "Notifications"
-            color: Color.popups.text
-            font.family: Style.font.family
-            font.pixelSize: Style.font.title
-            font.bold: true
-          }
-          Button {
-            id: clearButton
-            anchors.right: parent.right
-            text: "Clear all"
-            enabled: root.service && root.service.centerModel.count > 0
-            onClicked: root.service.clearCenter()
-          }
+          text: row.model.summary
+          color: row.model.urgency === 2 ? Color.urgent : row.rowForeground
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.body
+          font.bold: true
+          elide: Text.ElideRight
+          maximumLineCount: 1
         }
-        PanelSeparator {}
+
+        Text {
+          id: bodyText
+          width: parent.width
+          text: root.sanitizeBody(row.model.body, row.model.app, row.model.appIcon)
+          visible: text.length > 0
+          color: Util.alpha(row.rowForeground, 0.75)
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.bodySmall
+          elide: Text.ElideRight
+          maximumLineCount: 2
+          wrapMode: Text.Wrap
+        }
+
+        Text {
+          id: metaText
+          width: parent.width
+          text: (row.model.app ? row.model.app : "Notification")
+            + (root.relativeTime(row.model.timestamp) ? "  ·  " + root.relativeTime(row.model.timestamp) : "")
+          color: Color.muted
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.caption
+          elide: Text.ElideRight
+          maximumLineCount: 1
+        }
       }
 
-      Text {
-        anchors.centerIn: parent
-        visible: !root.service || root.service.centerModel.count === 0
-        text: root.service ? "No notifications" : "Notification service unavailable"
-        color: Color.muted
-        font.family: Style.font.family
-        font.pixelSize: Style.font.body
+      Item {
+        id: dismissArea
+        width: row.iconSize
+        height: row.iconSize
+        anchors.right: parent.right
+        anchors.rightMargin: Style.spacing.md
+        anchors.verticalCenter: parent.verticalCenter
+
+        Rectangle {
+          anchors.fill: parent
+          radius: Style.cornerRadius
+          color: dismissHover.hovered ? Style.hoverFillFor(row.rowForeground, Color.accent) : "transparent"
+        }
+
+        Text {
+          anchors.centerIn: parent
+          text: "\uf00d"
+          color: dismissHover.hovered ? row.rowForeground : Qt.darker(row.rowForeground, 1.4)
+          font.family: root.fontFamily
+          font.pixelSize: Style.font.bodySmall
+        }
+
+        MouseArea {
+          id: dismissHover
+          anchors.fill: parent
+          hoverEnabled: true
+          cursorShape: Qt.PointingHandCursor
+          onClicked: root.dismissRow(row.model.index)
+        }
       }
 
-      ListView {
-        id: list
-        anchors.top: header.bottom
-        anchors.topMargin: Style.space(10)
-        anchors.bottom: parent.bottom
+      Rectangle {
         anchors.left: parent.left
         anchors.right: parent.right
-        clip: true
-        spacing: Style.space(10)
-        model: root.service ? root.service.centerModel : null
-        Controls.ScrollBar.vertical: Controls.ScrollBar {}
-
-        delegate: Item {
-          id: entry
-          required property var model
-          width: list.width
-          height: toast.height
-
-          HoverHandler { id: hover }
-          Toast {
-            id: toast
-            x: Style.space(10)
-            cardWidth: entry.width - Style.space(20)
-            row: entry.model
-            expanded: true
-            paused: true
-            hovered: hover.hovered
-            hoverX: hover.point.position.x
-            hoverY: hover.point.position.y
-            now: root.service.nowTick
-            actions: root.service.actionsOf(row.key, root.service.refsRevision)
-            actionsAlign: root.service.actionsAlign
-            snoozeOptions: root.service.snoozeOptions
-            replying: root.service.replyingKey === row.key
-            onActivated: { root.service.activate(row.key); root.close() }
-            onDismissed: root.service.dismissCenter(row.key)
-            onActionInvoked: function(identifier) { root.service.invokeAction(row.key, identifier) }
-            onOfferTaken: function(kind, value) { root.service.takeOffer(kind, value, row.key) }
-            onReplyRequested: root.service.replyingKey = row.key
-            onReplySent: function(text) { root.service.sendReply(row.key, text) }
-            onReplyCancelled: root.service.replyingKey = ""
-            onSnoozeRequested: function(seconds) {
-              root.service.snoozeSource(row.groupKey, row.source || row.app, seconds)
-            }
-            onSilenceRequested: root.service.setDoNotDisturb(true)
-          }
-        }
+        anchors.bottom: parent.bottom
+        height: 1
+        color: Util.alpha(row.rowForeground, 0.08)
       }
     }
   }

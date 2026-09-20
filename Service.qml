@@ -395,6 +395,7 @@ Item {
   property int keySeed: 0
 
   ListModel { id: toasts }
+  property alias popupModel: toasts
 
   // The center keeps snapshots independently of the popup lifetime. Opening
   // history never replays notifications onto the desktop.
@@ -836,6 +837,21 @@ Item {
     var row = Store.snapshot(notification, key, NotificationUrgency)
     row.duration = durationFor(notification.urgency, row.expireTimeout)
 
+    // Some senders retry the same id-less notification while the popup is
+    // still alive. Treat that retry as an update, not a new history row.
+    if (!notification.id) {
+      for (var duplicate = 0; duplicate < toasts.count; duplicate++) {
+        var live = toasts.get(duplicate)
+        if (live.app === row.app && live.summary === row.summary
+            && live.body === row.body
+            && Number(row.timestamp || 0) - Number(live.timestamp || 0) < 2000) {
+          key = live.key
+          row.key = key
+          break
+        }
+      }
+    }
+
     remember(row)
 
     var previous = refs[key]
@@ -984,6 +1000,13 @@ Item {
     for (var i = 0; i < toasts.count; i++) keys.push(toasts.get(i).key)
     for (var k = 0; k < keys.length; k++) closeToast(keys[k], reason || "cleared")
   }
+
+  function dismissPopup(index) {
+    if (index < 0 || index >= toasts.count) return
+    closeToast(String(toasts.get(index).key), "dismissed")
+  }
+
+  function clearPopups() { clearAll("cleared") }
 
   // What the sender said can be done with this notification. Not a guess - the
   // app put these on the wire itself, and until now the daemon accepted them
@@ -1567,7 +1590,7 @@ Item {
                      JSON.stringify(service.actionsOf(key, service.refsRevision)))
       }
       return JSON.stringify({
-        toasts: toasts.count, route: route, actions: actions, heights: heights,
+        toasts: toasts.count, center: centerRows.count, route: route, actions: actions, heights: heights,
         replyPath: toasts.count > 0 ? String(toasts.get(0).replyPath || "") : "",
         replying: service.replyingKey !== "",
         expanded: service.expanded, pointerIn: service.pointerIn,
@@ -1588,7 +1611,7 @@ Item {
         deckInset: service.deckInset, hasWlCopy: service.hasWlCopy
       })
     }
-    function clear(): string { service.clearAll("cleared"); return "ok" }
+    function clear(): string { service.clearCenter(); return "ok" }
     function dnd(): string {
       service.doNotDisturb = !service.doNotDisturb
       return service.doNotDisturb ? "on" : "off"
