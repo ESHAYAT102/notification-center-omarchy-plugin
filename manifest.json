@@ -7,14 +7,11 @@
   "license": "MIT",
   "description": "Notification center in the menu bar",
   "kinds": [
-    "bar-widget",
-    "service"
+    "bar-widget"
   ],
   "entryPoints": {
-    "barWidget": "BarWidget.qml",
-    "service": "Service.qml"
+    "barWidget": "BarWidget.qml"
   },
-  "keepLoaded": true,
   "barWidget": {
     "displayName": "Notification Center",
     "description": "Opens a panel listing all notifications",

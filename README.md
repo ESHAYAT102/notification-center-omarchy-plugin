@@ -1,9 +1,8 @@
-# Omapager + Notification Center
+# Notification Center
 
-[Omapager](https://github.com/njpatel/omapager)'s notification daemon and exact
-card renderer, with a bell that opens a scrollable notification center.
-Source-grouped stacks, hover expansion, rich text, resolved icons, actions,
-inline phone replies, and snoozing come from omapager.
+A bar button that opens a scrollable panel listing live and recent notifications
+for the Omarchy bar. Right-clicking the bell toggles Do Not Disturb and swaps
+the icon to a bell-slash while notifications are silenced.
 
 ## Install
 
@@ -11,66 +10,46 @@ inline phone replies, and snoozing come from omapager.
 omarchy plugin add https://github.com/ESHAYAT102/notification-center-omarchy-plugin --enable
 ```
 
-Then run the install script to set up the daemon:
-
-```sh
-~/.config/omarchy/plugins/esh.notification-center/bin/install
-```
-
-This disables `omarchy.notifications`, adds `esh.notification-center` to
-`plugins` and the bar layout, and restarts the shell. Only one daemon can
-own the notification bus.
-
-To revert to Omarchy's default daemon:
-
-```sh
-~/.config/omarchy/plugins/esh.notification-center/bin/uninstall
-```
-
 ## Usage
 
-- Left-click the bell to open or close the center; Escape closes it.
-- Right-click the bell toggles Do Not Disturb.
-- Hover a popup stack to expand it; hover a card for its actions.
-- The center shows live and recent notifications, newest first, including muted
-  notifications. Opening it pauses popup expiry and never replays history as popups.
-- Dismiss a center card to remove it from history; Clear all clears the center,
-  pending notifications, and popups. Popup dismissal alone retains history.
-- Sender actions remain available in the center after popup expiry and during
-  Do Not Disturb, until the sender closes them or the shell restarts. Clicking
-  invokes the app’s original action (including browser tab/conversation navigation).
-  Restored notifications retain detected copy/link actions and source navigation.
-- Omapager's quiet rules apply: critical notifications and, by default,
-  verification codes can bypass DND. Set `codesBypassQuiet` to `false` to block codes.
-
-History is bounded to 200 entries / 7 days in `~/.local/state/omarchy/omapager`.
-This shares omapager's existing store, so switching preserves its history.
-Stock Omarchy notification history from older versions is not imported.
+- **Left-click** the bell to open or close the notification panel.
+- **Right-click** the bell to toggle Do Not Disturb.
+- **Escape** closes the panel.
 
 ## Keybindings
 
+The panel and its clear action are exposed over the shell IPC, so they can be
+bound to any compositor key with `omarchy-shell`:
+
+- **Toggle the panel**:
+
 ```sh
 omarchy shell i 'hl.dsp.add("SUPER + A", "Notification Center", "omarchy-shell esh.notification-center toggle")'
+```
+
+- **Clear all notifications** (empties the panel list, dismisses on-screen
+  toasts, and wipes recorded history — works whether or not the panel is open):
+
+```sh
 omarchy shell i 'hl.dsp.add("SUPER + comma", "Clear notifications", "omarchy-shell esh.notification-center clear")'
 ```
 
-Omapager's `omapager` and stock `notifications` IPC targets remain available.
-Inline widget settings support `stacking`, `actionsAlign`, `hideSettingsAction`,
-`smartRaise`, `snoozeDurations`, `wakeHour`, and `codesBypassQuiet` as described in
-[omapager's settings](https://github.com/njpatel/omapager#settings).
+## Configure
+
+Move the widget on the bar:
+
+```sh
+omarchy bar move esh.notification-center --section right
+```
 
 ## Remove
 
 ```sh
-~/.config/omarchy/plugins/esh.notification-center/bin/uninstall
 omarchy plugin remove esh.notification-center
 ```
 
-Stored history is retained.
+## Notes
 
-See THIRD_PARTY.md and LICENSE.omapager for upstream attribution.
+- Notifications silenced by Do Not Disturb do not create popups, matching the built-in Omarchy behavior.
+- The plugin reads live popups and persisted notification history from the `omarchy.notifications` service; no extra services or privileges are used.
 
-## Check
-
-Run `python test_center.py` in an Omarchy Wayland session. It uses a private
-D-Bus session and temporary storage, leaving your notification history untouched.

@@ -988,7 +988,10 @@ Item {
     }
     toasts.remove(at)
     delete heights[key]
-    Store.write(storeProc, storeBin, forgottenKeys[key] ? "drop" : "close", null, [key, reason])
+    // "cleared" (clear-all) is always followed by a history wipe, so
+    // archiving here would only resurrect the row after the wipe lands.
+    if (reason !== "cleared")
+      Store.write(storeProc, storeBin, forgottenKeys[key] ? "drop" : "close", null, [key, reason])
     layoutRevision += 1        // the row is gone; nothing moves, the gap already closed
   }
 
