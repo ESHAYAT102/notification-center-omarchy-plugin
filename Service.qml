@@ -1518,7 +1518,10 @@ Item {
           service.wantIcon(row)
           if (service.forgottenKeys[row.key]) continue
           service.remember(row)
-          toasts.insert(0, row)
+          // Only rows fresh enough to have plausibly arrived during the
+          // restart surface as toasts; older history stays in the store for
+          // the center to replay on open instead of popping back up.
+          if (Date.now() / 1000 - Number(row.ts || 0) <= 300) toasts.insert(0, row)
         }
       }
     }
