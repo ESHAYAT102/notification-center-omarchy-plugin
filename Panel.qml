@@ -170,11 +170,9 @@ Panel {
     if (li >= 0 && !root.service.isRestoredRow(root.service.popupModel.get(li))
         && typeof root.service.activate === "function") {
       root.service.activate(String(root.service.popupModel.get(li).key || entry.key || ""))
-      return
-    }
-    // History row: fire its stored command, or focus the sender app — the
-    // same fallback the service uses for restored toasts.
-    if (entry.exec) {
+    } else if (entry.exec) {
+      // History row: fire its stored command, or focus the sender app — the
+      // same fallback the service uses for restored toasts.
       Util.execDetached(entry.exec)
     } else if (entry.app) {
       var shellPath = Quickshell.env("OMARCHY_PATH")
@@ -183,7 +181,13 @@ Panel {
         String(entry.app)
       ]
       focusProc.running = true
+    } else {
+      return
     }
+    // The opened row leaves the center in every path above; remember its key
+    // so a later replay or poll cannot resurrect it.
+    root.dismissedKeys[root.rowKey(entry)] = true
+    root.displayModel.remove(index)
   }
 
   function dismissRow(index) {
