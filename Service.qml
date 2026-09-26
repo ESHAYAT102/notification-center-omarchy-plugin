@@ -819,6 +819,11 @@ Item {
     return -1
   }
 
+  // Replayed history rows (Store.restored sets restored=true; live arrivals
+  // default it to false). The panel uses this to absorb replays without
+  // leaving them in the popup model, where the toast layer would repaint them.
+  function isRestoredRow(row) { return !!row.restored }
+
   // ------------------------------------------------------------- arrival
   function handleNotification(notification) {
     if (String(notification.summary || "").trim().toLowerCase() === "instagram"

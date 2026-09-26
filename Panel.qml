@@ -144,12 +144,21 @@ Panel {
     }
   }
 
-  function liveIndexFor(originalId, timestamp) {
+  function liveIndexFor(entry) {
     var pm = root.service && root.service.popupModel ? root.service.popupModel : null
-    if (!pm) return -1
-    for (var i = 0; i < pm.count; i++) {
-      var row = pm.get(i)
-      if (row && row.originalId === originalId && row.timestamp === timestamp) return i
+    if (!pm || !entry) return -1
+    var k = entry.key
+    if (k !== undefined && k !== null && String(k) !== "") {
+      for (var i = 0; i < pm.count; i++) {
+        var rk = pm.get(i)
+        if (rk && String(rk.key) === String(k)) return i
+      }
+      return -1
+    }
+    for (var j = 0; j < pm.count; j++) {
+      var row = pm.get(j)
+      if (row && (row.originalId || 0) === (entry.originalId || 0)
+          && (row.timestamp || 0) === (entry.timestamp || 0)) return j
     }
     return -1
   }
@@ -157,10 +166,10 @@ Panel {
   function actOnRow(index) {
     var entry = root.displayModel.get(index)
     if (!entry || !root.service) return
-    var li = root.liveIndexFor(entry.originalId, entry.timestamp)
+    var li = root.liveIndexFor(entry)
     if (li >= 0 && !root.service.isRestoredRow(root.service.popupModel.get(li))
-        && typeof root.service.invokePopupDefault === "function") {
-      root.service.invokePopupDefault(li)
+        && typeof root.service.activate === "function") {
+      root.service.activate(String(root.service.popupModel.get(li).key || entry.key || ""))
       return
     }
     // History row: fire its stored command, or focus the sender app — the
@@ -180,7 +189,7 @@ Panel {
   function dismissRow(index) {
     var entry = root.displayModel.get(index)
     if (!entry) return
-    var li = root.liveIndexFor(entry.originalId, entry.timestamp)
+    var li = root.liveIndexFor(entry)
     if (li >= 0 && root.service && !root.service.isRestoredRow(root.service.popupModel.get(li))
         && typeof root.service.dismissPopup === "function") {
       root.service.dismissPopup(li)
