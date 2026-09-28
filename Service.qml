@@ -1854,6 +1854,21 @@ Item {
 
   function replayHistory() { if (!replayProc.running) replayProc.running = true }
 
+  // Direct entry point for the center panel. The panel prefers this over the
+  // shared `notifications showHistory` IPC, which every notifications handler
+  // answers - including disabled stock remnants that would repaint an
+  // "empty history" placeholder toast of their own.
+  function showRecentHistory() { service.replayHistory() }
+
+  // Direct entry point for the center panel's clear-all. Same reason: the
+  // shared `notifications clear` IPC is shadowed by the stock handler, so a
+  // wipe issued that way never reaches this store.
+  function clearHistory() {
+    Store.write(storeProc, storeBin, "forget-all", null)
+    service.heldRows = []
+    service.heldRevision += 1
+  }
+
   // ------------------------------------------------------------- surface
   //
   // One full-screen layer per output. Full-screen and fixed: a surface that

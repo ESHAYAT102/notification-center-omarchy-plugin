@@ -206,7 +206,9 @@ Panel {
   }
 
   // Dismiss the on-screen toasts (the service archives them to history), then
-  // wipe the recorded history through the public notifications IPC.
+  // wipe the recorded history. Prefer the direct service call: the shared
+  // `notifications clear` IPC is shadowed by the stock handler and never
+  // reaches this store.
   function clearAll() {
     // Remember everything visible first: clearPopups() only marks rows
     // leaving and the exit timer removes them ~200ms later, so a sync in
@@ -223,6 +225,10 @@ Panel {
     root.displayModel.clear()
     if (root.service && typeof root.service.clearPopups === "function")
       root.service.clearPopups()
+    if (root.service && typeof root.service.clearHistory === "function") {
+      root.service.clearHistory()
+      return
+    }
     var shellPath = Quickshell.env("OMARCHY_PATH")
     clearIpcProc.command = [
       shellPath ? shellPath + "/bin/omarchy-shell" : "omarchy-shell",
